@@ -10,3 +10,6 @@ tools/http-telnet-bridge/storage/profiles/
 
 # Node.js зависимости (в казне не храним — тяжёл оными свиток)
 tools/http-telnet-bridge/node_modules/
+
+# Оказия скрипта создания map: неразвёрнутый путь $PROJECT_BUILD_DIR/$PIOENV
+$PROJECT_BUILD_DIR/
