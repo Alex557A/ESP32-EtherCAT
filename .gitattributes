@@ -1,0 +1,33 @@
+# Единый стиль переводов строк: в репозитории — LF (Unix), на выгрузке — по вкусу ОС.
+* text=auto eol=lf
+
+# Явно текстовые свитки
+*.c      text
+*.cpp    text
+*.h      text
+*.hpp    text
+*.ino    text
+*.py     text
+*.js     text
+*.json   text
+*.md     text
+*.xml    text
+*.ini    text
+*.sh     text eol=lf
+*.bat    text eol=crlf
+*.ps1    text eol=crlf
+*.vbs    text eol=crlf
+
+# Бинарные сокровища — не трогать
+*.pdf    binary
+*.png    binary
+*.jpg    binary
+*.gif    binary
+*.ico    binary
+*.zip    binary
+*.bin    binary
+*.elf    binary
+*.map    binary
+
+# Языковая статистика GitHub: не считать вендорскую библиотеку своей
+lib/EspUsbHost/** linguist-vendored

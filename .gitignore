@@ -13,3 +13,10 @@ tools/http-telnet-bridge/node_modules/
 
 # Оказия скрипта создания map: неразвёрнутый путь $PROJECT_BUILD_DIR/$PIOENV
 $PROJECT_BUILD_DIR/
+
+# Вендорские материалы третьих лиц (авторские права, не для публикации)
+docs/China_Devices/
+
+# Внутренние указания разработчика — в публичную редакцию не входят
+/.clinerules
+
