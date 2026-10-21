@@ -36,6 +36,23 @@ static void on_al_control_write_callback(uint16 value) {
     Serial.printf("[FSM] Master requests state 0x%04X\n", value);
     
     ec_state new_state = (ec_state)(value & 0x0F);
+
+    /* Проверка настроек SyncManager перед переходом в SAFE_OP / OP */
+    if (new_state == EC_STATE_SAFE_OP || new_state == EC_STATE_OPERATIONAL) {
+        uint16 code = ethercat_esc_check_sm_config(&g_stack_instance->memory);
+
+        if (code != EC_ALSTATUSCODE_NOERROR) {
+            Serial.printf("[FSM] SM config check FAILED: 0x%04X\n", code);
+            ethercat_memory_write16(&g_stack_instance->memory, ECT_REG_ALSTAT,
+                                    (uint16)(new_state | EC_STATE_ERROR));
+            ethercat_memory_write16(&g_stack_instance->memory, ECT_REG_ALSTATCODE, code);
+            return;
+        }
+
+        /* Перед OP применяем PDO-маппинг (области и размеры PDO) */
+        (void)ethercat_od_process_pending(&g_stack_instance->od,
+                                          &g_stack_instance->memory);
+    }
     
     boolean success = ethercat_fsm_transition_to(&g_stack_instance->fsm, new_state);
     
@@ -48,6 +65,58 @@ static void on_al_control_write_callback(uint16 value) {
 
 static void on_station_address_write_callback(uint16 value) {
     Serial.printf("[CONFIG] Station Address set to 0x%04X\n", value);
+}
+
+// ============================================================================
+// Хук изменений карты памяти (почтовый ящик, SII/EEPROM)
+// ============================================================================
+
+/** Диапазоны адресов пересекаются */
+static boolean addr_overlap(uint16 a_start, uint16 a_len, uint16 b_start, uint16 b_len) {
+    uint32 a_end = (uint32)a_start + a_len;
+    uint32 b_end = (uint32)b_start + b_len;
+
+    return ((a_start < b_end) && (b_start < a_end)) ? true : false;
+}
+
+static void on_memory_change_callback(void* ctx, uint16 addr, uint16 length, uint8 command) {
+    ethercat_stack_t* stack = (ethercat_stack_t*)ctx;
+    uint16 sm0_addr;
+    uint16 sm0_len;
+
+    (void)command;
+
+    if (stack == NULL) {
+        return;
+    }
+
+    /* Запись в регистры интерфейса EEPROM → обслужить запрос SII */
+    if (addr_overlap(addr, length, ECT_REG_EEPCFG, 0x000C) == true) {
+        (void)ethercat_esc_process_eeprom(&stack->esc, &stack->memory);
+    }
+
+    /* Запись в буфер почтового ящика SM0 → взвести признак заполнения */
+    sm0_addr = ethercat_memory_read16(&stack->memory, ECT_REG_SM0);
+    sm0_len = ethercat_memory_read16(&stack->memory, (uint16)(ECT_REG_SM0 + 2));
+
+    if (sm0_len < ECT_MBX_MIN_LENGTH ||
+        ((uint32)sm0_addr + sm0_len) > ETHERCAT_MEMORY_SIZE) {
+        sm0_addr = MAILBOX_OUT_ADDR;
+        sm0_len = ECT_MBX_SIZE;
+    }
+
+    if (addr_overlap(addr, length, sm0_addr, sm0_len) == true) {
+        uint8 stat0 = ethercat_memory_read8(&stack->memory, ECT_SM0STAT);
+        uint8 stat1 = ethercat_memory_read8(&stack->memory, ECT_SM1STAT);
+
+        /* Пришёл новый запрос: взвести признак заполнения SM0 и снять
+         * признак готовности ответа SM1 (предыдущий ответ считается
+         * принятым мастером) */
+        ethercat_memory_write8(&stack->memory, ECT_SM0STAT,
+                               (uint8)(stat0 | ECT_SMSTAT_MAILBOX));
+        ethercat_memory_write8(&stack->memory, ECT_SM1STAT,
+                               (uint8)(stat1 & ~ECT_SMSTAT_MAILBOX));
+    }
 }
 
 // ============================================================================
@@ -85,6 +154,37 @@ static void ethercat_rx_task(void* param) {
                 );
                 
                 if (datagrams > 0) {
+                    /* --- Обслуживание ESC: SII/EEPROM и почтовый ящик CoE ------- */
+                    ethercat_esc_update_counters(&stack->memory, true);
+                    (void)ethercat_esc_process_eeprom(&stack->esc, &stack->memory);
+
+                    while (ethercat_coe_process(&stack->od, &stack->memory)) {
+                        /* Обрабатываем все поступившие запросы CoE */
+                    }
+
+                    if (ethercat_od_process_pending(&stack->od, &stack->memory) == true) {
+                        Serial.printf("[CoE] PDO mapping: RxPDO=%u B, TxPDO=%u B\n",
+                                      (unsigned)ethercat_od_get_rx_pdo_size(&stack->od),
+                                      (unsigned)ethercat_od_get_tx_pdo_size(&stack->od));
+                    }
+
+                    /* --- Distributed Clock -------------------------------------- */
+                    ethercat_dc_update(&stack->dc, &stack->memory);
+
+                    if (ethercat_dc_check_sync(&stack->dc, &stack->memory) > 0) {
+                        /* Импульс SYNC0: защёлкнуть входы и применить выходы */
+                        if (stack->gpio_manager != NULL) {
+                            gpio_manager_t* gpio_sync = (gpio_manager_t*)stack->gpio_manager;
+                            uint8* raw_sync = ethercat_memory_get_raw(&stack->memory);
+
+                            if (raw_sync != NULL) {
+                                gpio_manager_update_inputs(gpio_sync,
+                                    &raw_sync[ethercat_esc_get_pdo_address(&stack->memory, false)],
+                                    PDO_INPUT_SIZE);
+                            }
+                        }
+                    }
+
                     // Если TX ещё занят предыдущим фреймом — этот кадр считаем потерянным
                     if (stack->tx_frame_len != 0) {
                         stack->frames_dropped++;
@@ -92,12 +192,25 @@ static void ethercat_rx_task(void* param) {
                     // PDO ↔ GPIO mapping (Phase 2)
                     if (stack->gpio_manager != NULL) {
                         gpio_manager_t* gpio = (gpio_manager_t*)stack->gpio_manager;
+                        uint8* raw = ethercat_memory_get_raw(&stack->memory);
+                        uint16 out_addr = ethercat_esc_get_pdo_address(&stack->memory, true);
+                        uint16 in_addr = ethercat_esc_get_pdo_address(&stack->memory, false);
+                        uint16 out_len = ethercat_esc_get_pdo_length(&stack->memory, true);
+                        uint16 in_len = ethercat_esc_get_pdo_length(&stack->memory, false);
 
-                        const uint8* pdo_out = ethercat_memory_get_pdo_output(&stack->memory);
-                        uint8* pdo_in = ethercat_memory_get_pdo_input(&stack->memory);
+                        /* Области PDO берём из настроек SyncManager (мастер),
+                         * с откатом на значения по умолчанию */
+                        if (out_addr == 0 || out_len == 0) {
+                            out_addr = PDO_OUTPUT_ADDR;
+                            out_len = PDO_OUTPUT_SIZE;
+                        }
+                        if (in_addr == 0 || in_len == 0) {
+                            in_addr = PDO_INPUT_ADDR;
+                            in_len = PDO_INPUT_SIZE;
+                        }
 
-                        gpio_manager_update_outputs(gpio, pdo_out, PDO_OUTPUT_SIZE);
-                        gpio_manager_update_inputs(gpio, pdo_in, PDO_INPUT_SIZE);
+                        gpio_manager_update_outputs(gpio, &raw[out_addr], out_len);
+                        gpio_manager_update_inputs(gpio, &raw[in_addr], in_len);
                     }
 
                     // PDO forwarding via ESP-NOW (Phase 5, Week 9)
@@ -263,6 +376,26 @@ boolean ethercat_stack_init(ethercat_stack_t* stack,
     // Инициализация FSM
     ethercat_fsm_init(&stack->fsm, &stack->memory);
     Serial.println("[STACK] ✓ FSM initialized");
+    
+    // Инициализация регистров ESC и образа SII
+    ethercat_esc_init(&stack->esc, &stack->memory);
+    Serial.printf("[STACK] ✓ ESC registers + SII (%u слов)\n", stack->esc.sii_words);
+
+    // Инициализация словаря объектов (CoE)
+    ethercat_od_init(&stack->od,
+                     ethercat_memory_get_pdo_output(&stack->memory),
+                     ethercat_memory_get_pdo_input(&stack->memory));
+    (void)ethercat_od_apply_pdo_mapping(&stack->od, &stack->memory);
+    Serial.printf("[STACK] ✓ Object Dictionary: %u объектов\n",
+                  (unsigned)ethercat_od_get_object_count(&stack->od));
+
+    // Инициализация Distributed Clock
+    ethercat_dc_init(&stack->dc);
+    Serial.println("[STACK] ✓ Distributed Clock initialized");
+
+    // Хук изменений памяти: почтовый ящик CoE и интерфейс SII/EEPROM
+    ethercat_frame_set_mem_change_hook(on_memory_change_callback, stack);
+    Serial.println("[STACK] ✓ Memory change hook installed");
     
     // Установка callbacks для Memory
     stack->memory.on_al_control_write = on_al_control_write_callback;
@@ -452,4 +585,25 @@ void ethercat_stack_set_stepgen(ethercat_stack_t* stack, void* stepgen) {
         return;
     }
     stack->stepgen = stepgen;
+}
+
+ethercat_od_t* ethercat_stack_get_od(ethercat_stack_t* stack) {
+    if (stack == NULL) {
+        return NULL;
+    }
+    return &stack->od;
+}
+
+ethercat_dc_t* ethercat_stack_get_dc(ethercat_stack_t* stack) {
+    if (stack == NULL) {
+        return NULL;
+    }
+    return &stack->dc;
+}
+
+ethercat_esc_t* ethercat_stack_get_esc(ethercat_stack_t* stack) {
+    if (stack == NULL) {
+        return NULL;
+    }
+    return &stack->esc;
 }

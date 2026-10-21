@@ -44,6 +44,24 @@ void ethercat_frame_process_command(ec_comt* datagram,
                                      uint16 memory_size);
 
 /**
+ * Хук изменения карты памяти: вызывается при каждой записи в память
+ * (для обслуживания почтового ящика CoE и интерфейса SII/EEPROM).
+ *
+ * @param ctx Произвольный контекст (передаётся в хук)
+ * @param addr Адрес начала изменённой области (физический)
+ * @param length Число байт
+ * @param command Команда EtherCAT, вызвавшая запись
+ */
+typedef void (*ec_mem_change_cb_t)(void* ctx, uint16 addr, uint16 length, uint8 command);
+
+/**
+ * @brief Установить хук изменений карты памяти
+ * @param cb Функция-хук (NULL — снять)
+ * @param ctx Контекст хука
+ */
+void ethercat_frame_set_mem_change_hook(ec_mem_change_cb_t cb, void* ctx);
+
+/**
  * @brief Инкремент Working Counter
  * @param datagram Указатель на EtherCAT datagram header
  * @param dlength Длина данных (без header и WKC)

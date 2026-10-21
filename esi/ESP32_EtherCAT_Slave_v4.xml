@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ESI/EDS-описание слейва ESP32 EtherCAT Slave v4
+  Соответствует реализации: src/ethercat_esc.cpp (SII), src/ethercat_od.cpp (словарь),
+  src/ethercat_dc.cpp (Distributed Clock).
+
+  Идентификация: Vendor ID 0x00000000, Product Code 0x00000001, Revision 0x00010000.
+
+  Профиль устройства: 32 дискретных входа (TxPDO 0x1A00 → 0x6000) и
+  32 дискретных выхода (RxPDO 0x1600 → 0x7010).
+-->
+<EtherCATInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="EtherCATInfo.xsd"
+              Version="1.6">
+  <Vendor>
+    <Id>#x00000000</Id>
+    <Name>ESP32 EtherCAT</Name>
+    <ImageData16x14>424D3E000000000000003E00000028000000100000000E0000000100010000000000C00000F1000000F1000000000000000000000000000000FFFFFFFFFFFF0000F80F0000F80F0000F80F0000C0030000C0030000C0030000C0030000C0030000E0070000F00F0000F81F0000FC3F0000FE7F0000FFFF0000</ImageData16x14>
+  </Vendor>
+
+  <Descriptions>
+    <Groups>
+      <Group>
+        <Type>ESP32_EtherCAT</Type>
+        <Name>ESP32 EtherCAT</Name>
+      </Group>
+    </Groups>
+
+    <Devices>
+      <Device Physics="YY">
+        <Type ProductCode="#x00000001" RevisionNo="#x00010000">ESP32-ECAT-SLAVE-4</Type>
+        <Name>ESP32 EtherCAT Slave v4</Name>
+        <Info>
+          <GroupType>ESP32_EtherCAT</GroupType>
+          <Profile><ProfileNo>0</ProfileNo><AddInfo>Digital IO</AddInfo></Profile>
+          <StateMachine>
+            <Timeout>
+              <PreOpTimeout>3000</PreOpTimeout>
+              <SafeOpOpTimeout>3000</SafeOpOpTimeout>
+              <BackToInitTimeout>3000</BackToInitTimeout>
+              <BackToSafeOpTimeout>3000</BackToSafeOpTimeout>
+            </Timeout>
+            <MailboxTimeout>500</MailboxTimeout>
+          </StateMachine>
+          <Mailbox>
+            <Timeout>500</Timeout>
+            <CoE CompleteAccess="1" SdoInfo="1" PdoAssign="1" PdoConfig="0"/>
+          </Mailbox>
+          <Dc>
+            <OpMode>
+              <Name>FreeRun</Name>
+              <Desc>Без синхронизации (свободный цикл)</Desc>
+              <AssignActivate>#x0000</AssignActivate>
+              <CycleTimeSync0 Factor="1">0</CycleTimeSync0>
+              <CycleTimeSync1 Factor="1">0</CycleTimeSync1>
+            </OpMode>
+            <OpMode>
+              <Name>DC</Name>
+              <Desc>DC-Synchron (SYNC0)</Desc>
+              <AssignActivate>#x0300</AssignActivate>
+              <CycleTimeSync0 Factor="1">0</CycleTimeSync0>
+              <CycleTimeSync1 Factor="1">0</CycleTimeSync1>
+            </OpMode>
+          </Dc>
+        </Info>
+
+        <Sm>
+          <Name>MBoxOut</Name>
+          <StartAddress>#x1200</StartAddress>
+          <ControlByte>#x26</ControlByte>
+          <Enable>1</Enable>
+        </Sm>
+        <Sm>
+          <Name>MBoxIn</Name>
+          <StartAddress>#x1300</StartAddress>
+          <DefaultSize>128</DefaultSize>
+          <ControlByte>#x22</ControlByte>
+          <Enable>1</Enable>
+        </Sm>
+        <Sm>
+          <Name>Outputs</Name>
+          <StartAddress>#x1000</StartAddress>
+          <DefaultSize>0</DefaultSize>
+          <ControlByte>#x24</ControlByte>
+          <Enable>1</Enable>
+        </Sm>
+        <Sm>
+          <Name>Inputs</Name>
+          <StartAddress>#x1100</StartAddress>
+          <DefaultSize>0</DefaultSize>
+          <ControlByte>#x20</ControlByte>
+          <Enable>1</Enable>
+        </Sm>
+
+        <Fmmu>Outputs</Fmmu>
+        <Fmmu>Inputs</Fmmu>
+        <Fmmu>MBoxState</Fmmu>
+
+        <RxPdo Fixed="1" Mandatory="1" Sm="2">
+          <Index>#x1600</Index>
+          <Name>RxPDO 0x1600 (выходы)</Name>
+          <Entry>
+            <Index>#x7010</Index>
+            <SubIndex>1</SubIndex>
+            <BitLen>16</BitLen>
+            <Name>DO 1..16</Name>
+            <DataType>UINT16</DataType>
+          </Entry>
+          <Entry>
+            <Index>#x7010</Index>
+            <SubIndex>2</SubIndex>
+            <BitLen>16</BitLen>
+            <Name>DO 17..32</Name>
+            <DataType>UINT16</DataType>
+          </Entry>
+        </RxPdo>
+
+        <TxPdo Fixed="1" Mandatory="1" Sm="3">
+          <Index>#x1A00</Index>
+          <Name>TxPDO 0x1A00 (входы)</Name>
+          <Entry>
+            <Index>#x6000</Index>
+            <SubIndex>1</SubIndex>
+            <BitLen>16</BitLen>
+            <Name>DI 1..16</Name>
+            <DataType>UINT16</DataType>
+          </Entry>
+          <Entry>
+            <Index>#x6000</Index>
+            <SubIndex>2</SubIndex>
+            <BitLen>16</BitLen>
+            <Name>DI 17..32</Name>
+            <DataType>UINT16</DataType>
+          </Entry>
+        </TxPdo>
+
+        <Dc>
+          <Name>DC</Name>
+          <AssignActivate>#x0300</AssignActivate>
+        </Dc>
+      </Device>
+    </Devices>
+  </Descriptions>
+</EtherCATInfo>

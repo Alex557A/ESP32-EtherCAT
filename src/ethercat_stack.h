@@ -13,6 +13,9 @@
 #include "ethercat_frame.h"
 #include "ethercat_memory.h"
 #include "ethercat_fsm.h"
+#include "ethercat_esc.h"
+#include "ethercat_od.h"
+#include "ethercat_dc.h"
 #include "w5500_macraw.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -43,6 +46,9 @@ typedef struct {
     w5500_macraw_t w5500_out;          /**< W5500 OUT (TX) */
     ethercat_memory_t memory;          /**< Memory Map */
     ethercat_fsm_t fsm;                /**< State Machine */
+    ethercat_esc_t esc;                /**< Регистры ESC + образ SII */
+    ethercat_od_t od;                  /**< Словарь объектов + CoE */
+    ethercat_dc_t dc;                  /**< Distributed Clock */
 
     // Optional integrations
     void* gpio_manager;                /**< gpio_manager_t* (PDO ↔ GPIO) */
@@ -184,6 +190,27 @@ void ethercat_stack_set_can_pdo_tx_interval_ms(ethercat_stack_t* stack, uint16_t
  * @param stepgen Указатель на stepgen_t (может быть NULL)
  */
 void ethercat_stack_set_stepgen(ethercat_stack_t* stack, void* stepgen);
+
+/**
+ * @brief Получить словарь объектов (CoE) для телеметрии
+ * @param stack Указатель на stack структуру
+ * @return Указатель на ethercat_od_t (или NULL)
+ */
+ethercat_od_t* ethercat_stack_get_od(ethercat_stack_t* stack);
+
+/**
+ * @brief Получить модуль Distributed Clock
+ * @param stack Указатель на stack структуру
+ * @return Указатель на ethercat_dc_t (или NULL)
+ */
+ethercat_dc_t* ethercat_stack_get_dc(ethercat_stack_t* stack);
+
+/**
+ * @brief Получить слой регистров ESC (SII)
+ * @param stack Указатель на stack структуру
+ * @return Указатель на ethercat_esc_t (или NULL)
+ */
+ethercat_esc_t* ethercat_stack_get_esc(ethercat_stack_t* stack);
 
 #ifdef __cplusplus
 }
