@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 EtherCAT Slave - Configuration</title>
+    
+    <!-- Подключение CSS для индикаторов статуса -->
+    <link rel="stylesheet" href="css/status-indicators.css">
+    
+    <!-- Ваши существующие стили -->
+    <!-- <link rel="stylesheet" href="css/main.css"> -->
+</head>
+<body>
+    <!-- Индикатор статуса подключения ESP32 (будет создан автоматически) -->
+    <!-- <div id="esp-connection-indicator"></div> -->
+    
+    <!-- Индикатор статуса автозаполнения (будет создан автоматически) -->
+    <!-- <div id="auto-fill-status-indicator"></div> -->
+    
+    <!-- Ваш существующий контент -->
+    <div class="container">
+        <h1>ESP32 EtherCAT Slave Configuration</h1>
+        
+        <!-- Форма добавления USB keyboard канала -->
+        <form id="add-channel-form" class="channel-form">
+            <h2>Добавить USB Keyboard канал</h2>
+            
+            <div class="field-wrapper">
+                <label for="usb-keycode-hex">USB key code (HEX):</label>
+                <input type="text" 
+                       id="usb-keycode-hex" 
+                       name="usb-keycode-hex" 
+                       placeholder="0x60"
+                       pattern="^0x[0-9A-Fa-f]{1,2}$"
+                       title="Формат: 0xXX (например, 0x60)">
+                <!-- Подсказка будет добавлена автоматически -->
+            </div>
+            
+            <div class="field-wrapper">
+                <label for="usb-button-select">USB кнопка:</label>
+                <select id="usb-button-select" name="usb-button-select">
+                    <option value="">Выберите кнопку...</option>
+                    <!-- Опции будут добавлены динамически -->
+                </select>
+            </div>
+            
+            <div class="field-wrapper">
+                <label>Модификаторы:</label>
+                <div class="modifiers-group">
+                    <label><input type="checkbox" id="modifier-lctrl" name="modifier-lctrl"> LCtrl</label>
+                    <label><input type="checkbox" id="modifier-lshift" name="modifier-lshift"> LShift</label>
+                    <label><input type="checkbox" id="modifier-lalt" name="modifier-lalt"> LAlt</label>
+                    <label><input type="checkbox" id="modifier-lgui" name="modifier-lgui"> LGui</label>
+                    <label><input type="checkbox" id="modifier-rctrl" name="modifier-rctrl"> RCtrl</label>
+                    <label><input type="checkbox" id="modifier-rshift" name="modifier-rshift"> RShift</label>
+                    <label><input type="checkbox" id="modifier-ralt" name="modifier-ralt"> RAlt</label>
+                    <label><input type="checkbox" id="modifier-rgui" name="modifier-rgui"> RGui</label>
+                </div>
+            </div>
+            
+            <div class="field-wrapper">
+                <label for="pdo-byte">PDO byte:</label>
+                <input type="number" 
+                       id="pdo-byte" 
+                       name="pdo-byte" 
+                       min="0" 
+                       max="255"
+                       placeholder="Автоматически">
+            </div>
+            
+            <div class="field-wrapper">
+                <label for="index">Index:</label>
+                <input type="number" 
+                       id="index" 
+                       name="index" 
+                       min="0" 
+                       max="65535"
+                       placeholder="Автоматически">
+            </div>
+            
+            <div class="field-wrapper">
+                <label for="channel-name">Имя канала:</label>
+                <input type="text" 
+                       id="channel-name" 
+                       name="channel-name" 
+                       required
+                       placeholder="Введите имя канала">
+            </div>
+            
+            <button type="submit">Добавить канал</button>
+        </form>
+    </div>
+    
+    <!-- Подключение JavaScript файлов -->
+    <!-- ВАЖНО: Порядок подключения важен! -->
+    
+    <!-- 1. Сначала connection-status.js -->
+    <script src="js/connection-status.js"></script>
+    
+    <!-- 2. Затем ui-status-indicator.js -->
+    <script src="js/ui-status-indicator.js"></script>
+    
+    <!-- 3. Затем usb-keyboard-auto-fill.js -->
+    <script src="js/usb-keyboard-auto-fill.js"></script>
+    
+    <!-- Ваши существующие скрипты -->
+    <!-- <script src="js/main.js"></script> -->
+    
+    <script>
+        // Пример инициализации WebSocket (если еще не инициализирован)
+        if (!window.ws) {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}`;
+            
+            window.ws = new WebSocket(wsUrl);
+            
+            window.ws.onopen = () => {
+                console.log('WebSocket connected');
+            };
+            
+            window.ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+            
+            window.ws.onclose = () => {
+                console.log('WebSocket disconnected');
+            };
+        }
+    </script>
+</body>
+</html>

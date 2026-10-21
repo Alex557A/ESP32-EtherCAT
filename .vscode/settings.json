@@ -1,0 +1,9 @@
+{
+    "terminal.integrated.suggest.providers": {
+
+        "terminal-suggest": true,
+        "pwsh-shell-integration": true
+    },
+    "task.slowProviderWarning": true,
+    "editor.stickyScroll.defaultModel": "outlineModel"
+}

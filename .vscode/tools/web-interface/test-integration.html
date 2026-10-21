@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест интеграции - Оффлайн режим и автозаполнение</title>
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status.warning {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .test-form {
+            margin: 20px 0;
+        }
+        .test-form input, .test-form select {
+            margin: 5px;
+            padding: 8px;
+            width: 200px;
+        }
+        .field-wrapper {
+            position: relative;
+            margin: 15px 0;
+        }
+        .field-wrapper label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .modifiers-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .modifiers-group label {
+            display: flex;
+            align-items: center;
+            font-weight: normal;
+        }
+    </style>
+    
+    <!-- Подключение CSS для индикаторов статуса -->
+    <link rel="stylesheet" href="css/status-indicators.css">
+</head>
+<body>
+    <h1>Тест интеграции: Оффлайн режим и автозаполнение USB key code</h1>
+    
+    <!-- Индикатор статуса подключения ESP32 -->
+    <div class="test-section">
+        <h3>1. Индикатор статуса подключения</h3>
+        <div id="esp-connection-indicator"></div>
+        <div id="test-connection-status" class="status">Проверка...</div>
+    </div>
+    
+    <!-- Индикатор статуса автозаполнения -->
+    <div class="test-section">
+        <h3>2. Индикатор статуса автозаполнения</h3>
+        <div id="auto-fill-status-indicator"></div>
+        <div id="test-auto-fill-status" class="status">Проверка...</div>
+    </div>
+    
+    <!-- Тестовая форма -->
+    <div class="test-section">
+        <h3>3. Тестовая форма автозаполнения</h3>
+        <p>Установите фокус на поле "USB key code (HEX)" и нажмите клавишу на подключенной клавиатуре</p>
+        
+        <form id="test-channel-form" class="test-form">
+            <div class="field-wrapper">
+                <label for="usb-keycode-hex">USB key code (HEX):</label>
+                <input type="text" 
+                       id="usb-keycode-hex" 
+                       name="usb-keycode-hex" 
+                       placeholder="0x60"
+                       pattern="^0x[0-9A-Fa-f]{1,2}$">
+            </div>
+            
+            <div class="field-wrapper">
+                <label for="usb-button-select">USB кнопка:</label>
+                <select id="usb-button-select" name="usb-button-select">
+                    <option value="">Выберите кнопку...</option>
+                    <option value="0x04">A</option>
+                    <option value="0x05">B</option>
+                    <option value="0x60">F1</option>
+                    <!-- Добавьте больше опций по необходимости -->
+                </select>
+            </div>
+            
+            <div class="field-wrapper">
+                <label>Модификаторы:</label>
+                <div class="modifiers-group">
+                    <label><input type="checkbox" id="modifier-lctrl" name="modifier-lctrl"> LCtrl</label>
+                    <label><input type="checkbox" id="modifier-lshift" name="modifier-lshift"> LShift</label>
+                    <label><input type="checkbox" id="modifier-lalt" name="modifier-lalt"> LAlt</label>
+                    <label><input type="checkbox" id="modifier-lgui" name="modifier-lgui"> LGui</label>
+                    <label><input type="checkbox" id="modifier-rctrl" name="modifier-rctrl"> RCtrl</label>
+                    <label><input type="checkbox" id="modifier-rshift" name="modifier-rshift"> RShift</label>
+                    <label><input type="checkbox" id="modifier-ralt" name="modifier-ralt"> RAlt</label>
+                    <label><input type="checkbox" id="modifier-rgui" name="modifier-rgui"> RGui</label>
+                </div>
+            </div>
+            
+            <div class="field-wrapper">
+                <label for="pdo-byte">PDO byte:</label>
+                <input type="number" 
+                       id="pdo-byte" 
+                       name="pdo-byte" 
+                       min="0" 
+                       max="255"
+                       placeholder="Автоматически">
+            </div>
+            
+            <div class="field-wrapper">
+                <label for="index">Index:</label>
+                <input type="number" 
+                       id="index" 
+                       name="index" 
+                       min="0" 
+                       max="65535"
+                       placeholder="Автоматически">
+            </div>
+            
+            <div class="field-wrapper">
+                <label for="channel-name">Имя канала:</label>
+                <input type="text" 
+                       id="channel-name" 
+                       name="channel-name" 
+                       placeholder="Введите имя канала">
+            </div>
+        </form>
+        
+        <div id="test-form-status" class="status">Готово к тестированию</div>
+    </div>
+    
+    <!-- Тест API endpoint -->
+    <div class="test-section">
+        <h3>4. Тест API endpoint</h3>
+        <button onclick="testAPIEndpoint()">Проверить /api/devices/192.168.20.1/status</button>
+        <div id="test-api-result" class="status">Нажмите кнопку для проверки</div>
+    </div>
+    
+    <!-- Тест WebSocket -->
+    <div class="test-section">
+        <h3>5. Тест WebSocket событий</h3>
+        <div id="test-websocket-status" class="status">Проверка WebSocket...</div>
+        <div id="test-websocket-events" style="max-height: 200px; overflow-y: auto; margin-top: 10px;">
+            <p>События WebSocket будут отображаться здесь...</p>
+        </div>
+    </div>
+    
+    <!-- Лог консоли -->
+    <div class="test-section">
+        <h3>6. Лог консоли</h3>
+        <div id="console-log" style="background: #f5f5f5; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+            <p>Логи будут отображаться здесь...</p>
+        </div>
+    </div>
+    
+    <!-- Подключение JavaScript файлов -->
+    <!-- ВАЖНО: Порядок подключения важен! -->
+    <script src="js/connection-status.js"></script>
+    <script src="js/ui-status-indicator.js"></script>
+    <script src="js/usb-keyboard-auto-fill.js"></script>
+    
+    <script>
+        // Перехват console.log для отображения в интерфейсе
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        
+        const logElement = document.getElementById('console-log');
+        
+        function addLog(message, type = 'log') {
+            const p = document.createElement('p');
+            p.style.color = type === 'error' ? 'red' : type === 'warn' ? 'orange' : 'black';
+            p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logElement.appendChild(p);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addLog(args.join(' '), 'log');
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addLog(args.join(' '), 'error');
+        };
+        
+        console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            addLog(args.join(' '), 'warn');
+        };
+        
+        // Тест API endpoint
+        async function testAPIEndpoint() {
+            const resultDiv = document.getElementById('test-api-result');
+            resultDiv.className = 'status';
+            resultDiv.textContent = 'Проверка...';
+            
+            try {
+                const response = await fetch('/api/devices/192.168.20.1/status');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.className = 'status success';
+                    resultDiv.innerHTML = `
+                        <strong>✓ API endpoint работает!</strong><br>
+                        Connected: ${data.connected}<br>
+                        Last Seen: ${data.lastSeen || 'N/A'}<br>
+                        IP: ${data.ip}<br>
+                        Port: ${data.port}
+                    `;
+                } else {
+                    resultDiv.className = 'status error';
+                    resultDiv.textContent = `Ошибка: ${response.status} ${response.statusText}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'status error';
+                resultDiv.textContent = `Ошибка: ${error.message}`;
+            }
+        }
+        
+        // Тест WebSocket
+        function testWebSocket() {
+            const statusDiv = document.getElementById('test-websocket-status');
+            const eventsDiv = document.getElementById('test-websocket-events');
+            
+            if (window.ws) {
+                if (window.ws.readyState === WebSocket.OPEN) {
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = '✓ WebSocket подключен';
+                } else {
+                    statusDiv.className = 'status warning';
+                    statusDiv.textContent = `WebSocket состояние: ${window.ws.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)`;
+                }
+                
+                // Слушаем события
+                window.ws.addEventListener('message', (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.method === 'keyboard_key_pressed') {
+                            const p = document.createElement('p');
+                            p.textContent = `[${new Date().toLocaleTimeString()}] keyboard_key_pressed: keycode=${data.params.keycode}, modifier=${data.params.modifier}, hex=${data.params.keycode_hex}`;
+                            eventsDiv.appendChild(p);
+                            eventsDiv.scrollTop = eventsDiv.scrollHeight;
+                        }
+                    } catch (e) {
+                        // Игнорируем не-JSON сообщения
+                    }
+                });
+            } else {
+                statusDiv.className = 'status warning';
+                statusDiv.textContent = 'WebSocket не инициализирован (window.ws не найден)';
+            }
+        }
+        
+        // Проверка статуса подключения
+        function checkConnectionStatus() {
+            const statusDiv = document.getElementById('test-connection-status');
+            
+            if (typeof espConnectionStatus !== 'undefined') {
+                const isConnected = espConnectionStatus.isConnected;
+                statusDiv.className = isConnected ? 'status success' : 'status warning';
+                statusDiv.textContent = isConnected 
+                    ? '✓ ESP32 подключен (онлайн)' 
+                    : '⚠ ESP32 не подключен (оффлайн)';
+            } else {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = '✗ espConnectionStatus не найден - проверьте подключение connection-status.js';
+            }
+        }
+        
+        // Проверка статуса автозаполнения
+        function checkAutoFillStatus() {
+            const statusDiv = document.getElementById('test-auto-fill-status');
+            
+            if (typeof usbKeyboardAutoFill !== 'undefined') {
+                const isEnabled = usbKeyboardAutoFill.isEnabled;
+                statusDiv.className = isEnabled ? 'status success' : 'status warning';
+                statusDiv.textContent = isEnabled 
+                    ? '✓ Автозаполнение включено' 
+                    : '⚠ Автозаполнение отключено (ESP offline)';
+            } else {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = '✗ usbKeyboardAutoFill не найден - проверьте подключение usb-keyboard-auto-fill.js';
+            }
+        }
+        
+        // Мониторинг изменений статуса
+        if (typeof espConnectionStatus !== 'undefined') {
+            espConnectionStatus.addListener((isConnected) => {
+                checkConnectionStatus();
+                checkAutoFillStatus();
+            });
+        }
+        
+        // Инициализация тестов
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                checkConnectionStatus();
+                checkAutoFillStatus();
+                testWebSocket();
+                
+                // Периодическое обновление
+                setInterval(() => {
+                    checkConnectionStatus();
+                    checkAutoFillStatus();
+                }, 2000);
+            }, 1000);
+        });
+        
+        // Тест формы
+        document.getElementById('usb-keycode-hex').addEventListener('input', () => {
+            const formStatus = document.getElementById('test-form-status');
+            const value = document.getElementById('usb-keycode-hex').value;
+            if (value) {
+                formStatus.className = 'status success';
+                formStatus.textContent = `✓ Значение введено: ${value}`;
+            }
+        });
+    </script>
+</body>
+</html>
