@@ -198,6 +198,154 @@ static uint8_t get_uint8_from_json(JsonObject params, const char* key1, const ch
     
     return default_val;
 }
+// ============================================================================
+// Импорт и сброс полной конфигурации (JSON-RPC: set_config / reset_config)
+// ============================================================================
+
+/**
+ * Импорт конфигурации (формат команды get_config).
+ * Применяет каналы I/O, энкодеры и настройки модуля расширения,
+ * при необходимости сохраняет конфигурацию во Flash.
+ */
+static boolean telnet_import_config(telnet_server_t* server, JsonObject params, int req_id) {
+    gpio_manager_t* gpio = (gpio_manager_t*)server->gpio_manager;
+    JsonObject cfg = params["config"].is<JsonObject>() ? params["config"].as<JsonObject>() : params;
+
+    uint16 ch_applied = 0;
+    uint16 ch_failed = 0;
+    uint16 enc_applied = 0;
+    uint16 enc_failed = 0;
+
+    // --- Каналы I/O (полная замена начиная с индекса 0) ---
+    if (cfg["gpio_channels"].is<JsonArray>()) {
+        uint8 idx = 0;
+        for (JsonObject o : cfg["gpio_channels"].as<JsonArray>()) {
+            gpio_channel_t ch;
+            memset(&ch, 0, sizeof(ch));
+            ch.enabled = (boolean)(o["enabled"] | true);
+            ch.type = (gpio_type_t)(int)(o["type"] | 0);
+            ch.gpio_pin = (uint8)(o["gpio_pin"] | 0);
+            ch.mcp23s17_port = (uint8)(o["mcp23s17_port"] | 0);
+            ch.usb_key_code = get_uint8_from_json(o, "usb_key_code", "key_code", 0);
+            ch.usb_modifiers = get_uint8_from_json(o, "usb_modifiers", "modifiers", 0);
+            ch.pdo_byte = (uint8)(o["pdo_byte"] | 0);
+            ch.pdo_bit = (uint8)(o["pdo_bit"] | 0);
+            ch.invert = (boolean)(o["invert"] | false);
+            const char* cname = o["name"] | "";
+            if (cname && cname[0]) {
+                strncpy(ch.name, cname, sizeof(ch.name) - 1);
+            }
+            if (gpio_manager_set_channel(gpio, idx, &ch)) {
+                ch_applied++;
+            } else {
+                ch_failed++;
+            }
+            idx++;
+        }
+        // Лишние каналы удаляем с конца
+        while (gpio->channel_count > idx) {
+            (void)gpio_manager_delete_channel(gpio, (uint8)(gpio->channel_count - 1));
+        }
+    }
+
+    // --- Энкодеры ---
+    if (cfg["encoders"].is<JsonArray>()) {
+        uint8 idx = 0;
+        for (JsonObject o : cfg["encoders"].as<JsonArray>()) {
+            gpio_encoder_t enc;
+            memset(&enc, 0, sizeof(enc));
+            enc.enabled = (boolean)(o["enabled"] | true);
+            enc.pin_a = (uint8)(o["pin_a"] | 0);
+            enc.pin_b = (uint8)(o["pin_b"] | 0);
+            enc.pdo_byte_start = (uint8)(o["pdo_byte_start"] | 0);
+            const char* ename = o["name"] | "";
+            if (ename && ename[0]) {
+                strncpy(enc.name, ename, sizeof(enc.name) - 1);
+            }
+            if (gpio_manager_set_encoder(gpio, idx, &enc)) {
+                enc_applied++;
+            } else {
+                enc_failed++;
+            }
+            idx++;
+        }
+        while (gpio->encoder_count > idx) {
+            (void)gpio_manager_delete_encoder(gpio, (uint8)(gpio->encoder_count - 1));
+        }
+    }
+
+    // --- Модуль расширения MCP23S17 ---
+    boolean io_ok = true;
+    if (cfg["io_expansion"].is<JsonObject>()) {
+        JsonObject io = cfg["io_expansion"].as<JsonObject>();
+        boolean enabled = io["enabled"] | false;
+        if (!enabled) {
+            gpio->mcp23s17_enabled = false;
+        } else {
+            uint8 cs_pin = (uint8)(io["cs_pin"] | gpio->mcp23s17.config.cs_pin);
+            uint16 port_direction = (uint16)(io["port_direction"] | (uint32)gpio->mcp23s17.config.port_direction);
+            uint16 port_pullup = (uint16)(io["port_pullup"] | (uint32)gpio->mcp23s17.config.port_pullup);
+            uint16 port_invert = (uint16)(io["port_invert"] | (uint32)gpio->mcp23s17.config.port_invert);
+            io_ok = gpio_manager_init_mcp23s17(gpio, cs_pin, port_direction, port_pullup, port_invert);
+        }
+    }
+
+    // --- Сохранение во Flash ---
+    boolean save_needed = params["save"] | true;
+    boolean saved = true;
+    if (save_needed) {
+        saved = gpio_manager_save_to_flash(gpio);
+    }
+
+    StaticJsonDocument<384> resp;
+    resp["id"] = req_id;
+    resp["success"] = (boolean)((ch_failed == 0) && (enc_failed == 0));
+    JsonObject result = resp["result"].to<JsonObject>();
+    result["channels_applied"] = ch_applied;
+    result["channels_failed"] = ch_failed;
+    result["encoders_applied"] = enc_applied;
+    result["encoders_failed"] = enc_failed;
+    result["channels"] = gpio->channel_count;
+    result["encoders"] = gpio->encoder_count;
+    result["io_expansion_ok"] = io_ok;
+    result["saved"] = saved;
+
+    return send_json_doc(server, resp);
+}
+
+/**
+ * Сброс конфигурации к значениям по умолчанию (пустой список каналов/энкодеров).
+ */
+static boolean telnet_reset_config(telnet_server_t* server, boolean save_needed, int req_id) {
+    gpio_manager_t* gpio = (gpio_manager_t*)server->gpio_manager;
+
+    // Удаляем все каналы и энкодеры (с конца массива)
+    while (gpio->channel_count > 0) {
+        (void)gpio_manager_delete_channel(gpio, (uint8)(gpio->channel_count - 1));
+    }
+    while (gpio->encoder_count > 0) {
+        (void)gpio_manager_delete_encoder(gpio, (uint8)(gpio->encoder_count - 1));
+    }
+    gpio->mcp23s17_enabled = false;
+
+    boolean saved = true;
+    if (save_needed) {
+        saved = gpio_manager_save_to_flash(gpio);
+    }
+
+    StaticJsonDocument<320> resp;
+    resp["id"] = req_id;
+    resp["success"] = saved;
+    JsonObject result = resp["result"].to<JsonObject>();
+    result["message"] = "Configuration reset to defaults";
+    result["channels"] = gpio->channel_count;
+    result["encoders"] = gpio->encoder_count;
+    result["saved"] = saved;
+
+    return send_json_doc(server, resp);
+}
+
+
 
 // ============================================================================
 // Initialization
@@ -905,7 +1053,26 @@ void telnet_server_process(telnet_server_t* server) {
                         Serial.println("[Telnet] get_config response sent successfully");
                     }
                 } else if (strcmp(method, "set_config") == 0) {
-                    (void)telnet_server_send_error(server, "set_config_not_implemented", req_id);
+                    // Импорт полной конфигурации (формат get_config)
+                    Serial.println("[Telnet] Processing set_config command (local import)");
+                    if (!server->gpio_manager) {
+                        (void)telnet_server_send_error(server, "gpio_manager_not_available", req_id);
+                    } else if (!is_json) {
+                        (void)telnet_server_send_error(server, "set_config_requires_jsonrpc", req_id);
+                    } else {
+                        JsonObject params = req["params"].is<JsonObject>() ? req["params"].as<JsonObject>() : JsonObject();
+                        (void)telnet_import_config(server, params, req_id);
+                    }
+                } else if (strcmp(method, "reset_config") == 0) {
+                    // Сброс конфигурации к значениям по умолчанию
+                    Serial.println("[Telnet] Processing reset_config command");
+                    if (!server->gpio_manager) {
+                        (void)telnet_server_send_error(server, "gpio_manager_not_available", req_id);
+                    } else {
+                        JsonObject params = req["params"].is<JsonObject>() ? req["params"].as<JsonObject>() : JsonObject();
+                        boolean save_needed = params["save"] | true;
+                        (void)telnet_reset_config(server, save_needed, req_id);
+                    }
                 } else if (strcmp(method, "set_gpio_channel") == 0) {
                     if (!server->gpio_manager) {
                         (void)telnet_server_send_error(server, "gpio_manager_not_available", req_id);
